@@ -1,50 +1,74 @@
-from flask import Flask, render_template, request
+import streamlit as st
 import pandas as pd
 import joblib
 
-app = Flask(__name__)
-
-# Load dataset referensi dan encoder
+#Load Model & Dataset
 df = pd.read_csv('df_model.csv')
-location_map = dict(df[['listing-location', 'location_encoded']].drop_duplicates().values.tolist())
-
-# Ambil harga tanah rata-rata dari dataset
-harga_tanah_per_m = df['listing-floorarea 2'].mean()
-
-# Load model dan label encoder
 model = joblib.load('random_forest_model.pkl')
 
-@app.route('/')
-def index():
-    return render_template(
-        'index.html',
-        price_prediction=0,
-        location_list=location_map.keys()
-    )
+#Lokasi & Encoding
+location_map = dict(df[['listing-location', 'location_encoded']].drop_duplicates().values.tolist())
+location_list = list(location_map.keys())
 
-@app.route('/predict', methods=['POST'])
-def predict():
-    location_name = request.form['listing_location']
-    location_encoded = location_map[location_name]
+harga_tanah_per_m = df['listing-floorarea 2'].mean()
 
-    bed = int(request.form['bed'])
-    bath = int(request.form['bath'])
-    floorarea = float(request.form['listing-floorarea'])
+# --- Konfigurasi halaman ---
+st.set_page_config(page_title="Prediksi Harga Rumah", layout="centered")
+st.markdown("""
+    <div style="background-color:#2563EB;padding:20px;border-radius:10px;text-align:center">
+        <h1 style="color:white;font-size:40px;">Prediksi Harga Rumah</h1>
+    </div>
+""", unsafe_allow_html=True)
 
-    features = [location_encoded, bed, bath, floorarea, harga_tanah_per_m]
-    prediction = model.predict([features])[0]
-    output = int(round(prediction))
-    price_formatted = f"{output:,}".replace(",", ".")
+st.write("")  
+col1, col2 = st.columns([1, 1])
 
-    return render_template(
-        'index.html',
-        price_prediction=price_formatted,
-        location_list=location_map.keys(),
-        location_name=location_name,
-        bed=bed,
-        bath=bath,
-        listing_floorarea=floorarea
-    )
+# Form Input di kolom kiri
+with col1:
+    st.subheader("Form Prediksi Harga")
 
-if __name__ == '__main__':
-    app.run(debug=True)
+    lokasi = st.selectbox("Lokasi", location_list)
+    bed = st.number_input("Jumlah Kamar Tidur", min_value=1, max_value=10, step=1)
+    bath = st.number_input("Jumlah Kamar Mandi", min_value=1, max_value=10, step=1)
+    luas_bangunan = st.number_input("Luas Bangunan (m²)", min_value=10.0, step=1.0)
+
+    predict_button = st.button("🔍 Prediksi Sekarang")
+
+# Output Hasil Prediksi di kolom kanan 
+with col2:
+    st.subheader("Estimasi Harga Rumah")
+
+    if predict_button:
+        # Ambil nilai encoded dari lokasi
+        lokasi_encoded = location_map[lokasi]
+
+        # Susun fitur sesuai urutan training
+        features = [[
+            lokasi_encoded,    
+            bed,               
+            bath,              
+            luas_bangunan,     
+            harga_tanah_per_m  
+        ]]
+
+        # Prediksi harga
+        prediction = model.predict(features)[0]
+        output = int(round(prediction))
+        price_formatted = f"Rp {output:,}".replace(",", ".")
+
+        # Tampilkan hasil
+        st.markdown(f"""
+        <h2 style="color:#2563EB;text-align:center;font-size:30px;">
+            {price_formatted}
+        </h2>
+        """, unsafe_allow_html=True)
+
+        # Tampilkan ringkasan input
+        st.markdown("---")
+        st.markdown("### Detail Input:")
+        st.write(f" Lokasi: **{lokasi}**")
+        st.write(f" Kamar Tidur: **{bed}**")
+        st.write(f" Kamar Mandi: **{bath}**")
+        st.write(f" Luas Bangunan: **{luas_bangunan} m²**")
+    else:
+        st.info("Isi form di sebelah kiri dan klik **Prediksi Sekarang** untuk melihat estimasi harga.")
